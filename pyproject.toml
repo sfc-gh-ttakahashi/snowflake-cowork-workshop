@@ -1,0 +1,13 @@
+[project]
+name = "snowflake-cowork-workshop"
+version = "0.1.0"
+description = "Snowflake CoWork ハンズオンの演習データ生成スクリプト"
+requires-python = ">=3.11"
+dependencies = ["reportlab>=4.0"]
+
+[dependency-groups]
+dev = ["pytest>=8.0"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["scripts"]

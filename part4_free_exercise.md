@@ -1,0 +1,70 @@
+# Part 4 : 自由操作 — CoWork で分析し、可視化して共有する（55分）
+
+Part 3 までで、構造化データ（Semantic View）と文書（Cortex Search）に答える Agent ができました。
+この Part では、次の 4 つの課題から好きなものを選び、自由に操作してください。
+質問の例は [`industries/manufacturing/questions.md`](industries/manufacturing/questions.md) にあります。
+
+| 課題 | 使う画面 | 成果物 | 目安 |
+|---|---|---|---|
+| A. 質問してグラフを保存する | CoWork | Chart アーティファクト | 10分 |
+| B. HTML レポートを作って共有する | CoWork | Report アーティファクト | 15分 |
+| C. ダッシュボードを作る | Workspaces の CoCo | Dashboard アーティファクト | 20分 |
+| D. Agent を改良する | Workspaces / SQL | 改良した Agent | 15分 |
+
+最後の 10 分で、何人かの方に作った成果物を画面で共有していただきます。
+
+---
+
+## 課題 A. 質問してグラフを保存する（CoWork）
+
+1. CoWork で **製造現場アシスタント** を選び、`questions.md` の「数値を集計する」の質問を試す
+2. 回答に出たグラフの **Save** を選び、アーティファクトとして保存する
+3. 画面左の **Artifacts** から保存したグラフを開き、**追加の質問** をする（例: 「このグラフを夜勤だけにして」）
+
+> 保存したグラフは元の SQL を持っています。前回開いてから 12 時間以上たって開くと、CoWork が元の SQL を実行し直し、そのときのデータでグラフを描き直します。
+
+## 課題 B. HTML レポートを作って共有する（CoWork）
+
+1. CoWork で次のように依頼する
+
+   ```text
+   L03 の品質問題について、経営会議向けの HTML レポートを作ってください。
+   不良率の推移グラフ、不良の種類別の内訳、原因（不具合報告書の要約）、対策と今後の予定を 1 ページにまとめてください。
+   ```
+
+2. 生成されたレポートを確認し、直したい点を追加で依頼する（例: 「色を会社のコーポレートカラーの紺にして」）
+3. 回答の **Publish artifact** を選び、共有先のロールを選んで公開する
+
+> CoWork は、作成時点の集計結果を HTML レポートに書き込みます。閲覧者は、元のテーブルへの権限がなくても内容を見られます。
+> 共有する前に、見せてよい内容かを確認してください。
+
+## 課題 C. ダッシュボードを作る（Workspaces の CoCo）
+
+ダッシュボードの作成・編集・公開は Workspaces で行います（CoWork では編集・公開できません）。
+
+1. **Projects » Workspaces** を開き、CoCo のパネルで次のように依頼する
+
+   ```text
+   COWORK_HANDSON_DB.ANALYTICS の mfg_semantic_view を使って、工場長向けの品質ダッシュボードを作ってください。
+   - KPI: 直近月の不良率、計画達成率、停止時間
+   - グラフ: ライン別の月次不良率、設備別の停止時間トップ 5、不良の種類別の内訳
+   - フィルタ: 工場、ライン
+   ```
+
+2. 生成された `.dash` ファイルをプレビューし、タイルの追加や変更を CoCo に依頼する
+3. **Publish artifact** を選んで公開し、CoWork の **Artifacts** から開けることを確かめる
+
+> ダッシュボードは閲覧者の権限でクエリを実行します。閲覧者ごとに、見えるデータが変わることがあります。
+
+## 課題 D. Agent を改良する
+
+次のどれかを試し、改良の前と後で同じ質問の回答を比べてください。
+
+- Semantic View に verified query（検証済みの質問と SQL の組）を 1 つ追加する（Part 1 の Semantic Studio を使う）
+- Agent の `instructions.response` に「回答の最後に、次に確認すべきことを 1 つ書く」を追加する
+- Agent の `sample_questions` を、自分の業務に近い質問に変える
+
+```sql
+-- Agent の定義を確認する
+DESCRIBE AGENT COWORK_HANDSON_DB.ANALYTICS.mfg_agent;
+```
