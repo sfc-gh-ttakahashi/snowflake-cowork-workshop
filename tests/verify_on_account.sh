@@ -14,9 +14,7 @@ work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
 
 run_sql() {
-  env -u SNOWFLAKE_HOST -u SNOWFLAKE_ACCOUNT \
-      -u SNOWFLAKE_CONNECTIONS_SNOWHOUSE_OAUTH_TOKEN -u SNOWFLAKE_CONNECTIONS_SNOWHOUSE_OAUTH_AUTHENTICATOR \
-      snow sql -c "$conn" -f "$1"
+  snow sql -c "$conn" -f "$1"
 }
 
 data="$root/industries/manufacturing/data"
