@@ -57,6 +57,8 @@ COWORK_HANDSON_DB.ANALYTICS の plants, lines, products, equipment, production, 
 7 テーブルから、製造現場の分析に使うセマンティックビュー mfg_semantic_view を作成してください。
 
 - 指標: 生産数、良品数、不良率（(生産数 - 良品数) / 生産数）、計画達成率（良品数 / 計画数）、停止回数、停止時間
+- 不良率の指標名は defect_rate にし、production テーブルに定義する
+- production テーブルに、生産月のディメンション production_month（DATE_TRUNC('MONTH', production_date)）を作る
 - 同義語: 日本語の現場用語（例: 設備停止 = チョコ停、ダウンタイム）を付ける
 - production から lines への結合経路は 1 本にする（products 経由の関係は作らない）
 - 作成前に定義を見せて、確認を取ってから作成する
@@ -71,18 +73,69 @@ COWORK_HANDSON_DB.ANALYTICS の plants, lines, products, equipment, production, 
 ---
 ## 3. Semantic Studio で定義を確認・修正する
 
-Semantic Studio は、Workspaces で Semantic View を作成・編集する画面です。
-Semantic View は YAML ファイル（`.sv.yaml`）として開き、CoCo との対話でもフォームでも編集できます。
+Semantic Studio は、Semantic View を Workspaces 上の YAML ファイル（`.sv.yaml`）として作成・編集する機能です。
+AI & ML » Cortex Analyst の一覧から Semantic View を選ぶと、Workspaces でこのファイルが開きます。CoCo との対話でもフォームでも編集できます。
 
-1. 次のどちらかの方法で `MFG_SEMANTIC_VIEW` を開く
-   - CoCo に「mfg_semantic_view を Semantic Studio で開いて」と依頼する
-   - 左メニューの **AI & ML » Cortex Analyst** で一覧から選ぶ
-2. 次の 3 点を確認する
-   - **Relationships**: `production` と `lines` が `line_id` で結合されているか
-   - **Metrics**: 不良率の式が `(生産数 - 良品数) / 生産数` になっているか
-   - **Synonyms**: 「チョコ停」「不良率」などの現場用語が登録されているか
-3. 足りない同義語を 1 つ手で追加する（例: `downtime` に「ライン停止」）
-4. トップバーの **Deploy** を選び、差分を確認して Snowflake に反映する
+1. 左メニューの **AI & ML » Cortex Analyst** を開く
+2. 一覧の上部で、データベースとスキーマを次のように選ぶ（選ぶ前は、一覧に Semantic View が表示されません）
+
+   | 項目 | 選ぶ値 |
+   |---|---|
+   | データベース | `COWORK_HANDSON_DB` |
+   | スキーマ | `ANALYTICS` |
+
+3. 一覧に出た `MFG_SEMANTIC_VIEW` を選ぶ
+   （Workspaces の CoCo に「Semantic Studio で開いて」と頼んでも、CoCo は画面を開けません）
+4. 開いた YAML ファイル（`.sv.yaml`）で、次の 3 点を確認する。`Cmd + F`（Windows は `Ctrl + F`）で検索語を入れると見つけやすい
+
+   | 確認すること | YAML の場所 | 検索語 | 正しい状態の例 |
+   |---|---|---|---|
+   | production と lines の結合 | ファイル末尾の `relationships:` | `right_table: LINES` | `left_table: PRODUCTION`、`right_table: LINES`、`relationship_columns` の `left_column` と `right_column` がどちらも `LINE_ID` |
+   | 不良率の式 | `tables:` の `- name: PRODUCTION` の下にある `metrics:` | `不良率` | `expr:` が (生産数 - 良品数) / 生産数 を表す式になっている。例: `(SUM(production.produced_qty) - SUM(production.good_qty)) / NULLIF(SUM(production.produced_qty), 0)`、または不良数のファクトを使った `SUM(production.scrap_qty) / NULLIF(SUM(production.produced_qty), 0)` |
+   | 現場用語の同義語 | テーブル・ディメンション・指標ごとの `synonyms:` | `チョコ停` | `- name: DOWNTIME` の `synonyms:` に `- チョコ停` がある |
+
+   ```yaml
+   # 例: 不良率の指標（PRODUCTION テーブルの metrics の中）
+   metrics:
+     - name: DEFECT_RATE
+       synonyms:
+         - 不良率
+       expr: "(SUM(production.produced_qty) - SUM(production.good_qty)) / NULLIF(SUM(production.produced_qty), 0)"
+
+   # 例: 結合（ファイル末尾の relationships の中）
+   relationships:
+     - name: PRODUCTION_TO_LINES
+       left_table: PRODUCTION
+       right_table: LINES
+       relationship_columns:
+         - left_column: LINE_ID
+           right_column: LINE_ID
+   ```
+
+   > 指標や関係の `name` は、CoCo が付けるので受講者ごとに違います。名前ではなく、`expr` と `left_table` / `right_table` の中身で判断してください。
+   > `PRODUCTION` から `LINES` への経路が、`PRODUCTS` を経由する関係（`left_table: PRODUCTS`、`right_table: LINES`）でも定義されている場合は、その関係を削除します。経路が 2 本あると、ライン別の集計がエラーになります。
+
+   画面で見つけられない場合は、次のセルの SQL でも確認できます。
+
+```sql
+-- 関係・指標・同義語だけを表示する
+DESCRIBE SEMANTIC VIEW COWORK_HANDSON_DB.ANALYTICS.MFG_SEMANTIC_VIEW
+  ->> SELECT "object_kind", "object_name", "parent_entity", "property", "property_value"
+      FROM $1
+      WHERE "object_kind" IN ('RELATIONSHIP', 'METRIC') OR "property" = 'SYNONYMS'
+      ORDER BY "object_kind", "object_name";
+```
+
+| 確認すること | 結果の見方 |
+|---|---|
+| production と lines の結合 | `object_kind` が `RELATIONSHIP`、`parent_entity` が `PRODUCTION` の行で、`REF_TABLE` が `LINES`、`FOREIGN_KEY` と `REF_KEY` が `["LINE_ID"]` |
+| 不良率の式 | `object_kind` が `METRIC` の行で、`property` が `EXPRESSION` の `property_value` |
+| 現場用語の同義語 | `property` が `SYNONYMS` の行の `property_value` |
+
+続けて、Semantic Studio の画面に戻ります。
+
+5. 足りない同義語を 1 つ手で追加する（例: `- name: DOWNTIME` の `synonyms:` に `- ライン停止` を足す）
+6. トップバーの **Deploy** を選び、差分を確認して Snowflake に反映する
 
 > Snowflake のドキュメントは、同義語を AI に自動生成させず、現場の用語・略語・旧名称を人が登録することを勧めています。
 > 自動生成した同義語は、回答の精度を下げることが多いためです。
@@ -92,6 +145,10 @@ Semantic View は YAML ファイル（`.sv.yaml`）として開き、CoCo との
 
 ---
 ## 4. 動作を確認する
+
+次のセルが `invalid identifier 'PRODUCTION.PRODUCTION_MONTH'` になる場合は、Semantic View に生産月のディメンションがありません。
+CoCo に「mfg_semantic_view の production テーブルに、DATE_TRUNC('MONTH', production_date) のディメンション production_month を追加して」と依頼してから、もう一度実行してください。
+`PRODUCTION.DEFECT_RATE` で同じエラーになる場合は、不良率の指標名を手順 3 の SQL で確かめ、クエリの `defect_rate` をその名前に置き換えてください。
 
 ```sql
 -- L03（射出成形）の月次不良率。9 月以降に上がっていれば、定義は正しい

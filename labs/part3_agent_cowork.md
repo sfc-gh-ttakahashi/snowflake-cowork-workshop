@@ -22,7 +22,7 @@ USE SCHEMA COWORK_HANDSON_DB.ANALYTICS;
 
 ```sql
 CREATE OR REPLACE AGENT mfg_agent
-    COMMENT = '製造業ハンズオン: 生産・品質・設備のデータと現場文書に答えるエージェント'
+    COMMENT = '製造業ハンズオン: 生産・品質・設備のデータと現場文書をもとに質問に答えるエージェント'
     PROFILE = '{"display_name": "製造現場アシスタント"}'
 FROM SPECIFICATION
 $$
@@ -33,7 +33,9 @@ instructions:
   response: |
     日本語で回答してください。数値の比較や推移は、できるだけグラフで示してください。
     不良率と計画達成率は百分率で示してください。
-    文書を根拠にした場合は、文書のタイトルを明記してください。
+    文書を根拠にした場合は、文書番号と文書種別（例: NCR-2026-0912 不具合報告書）を本文に明記してください。
+    複数の文書を使った場合は、回答の最後に「参照した文書」として、文書番号・文書種別・タイトルを箇条書きで並べてください。
+    ラインは「射出成形1号ライン（L03）」のように、名前と ID を並べて書いてください。
   orchestration: |
     数値（生産数・不良率・計画達成率・停止回数・停止時間）の質問には production_analyst を使ってください。
     原因・対策・手順・保守方法の質問には document_search を使ってください。
@@ -67,14 +69,22 @@ tool_resources:
   document_search:
     search_service: "COWORK_HANDSON_DB.ANALYTICS.MFG_DOC_SEARCH"
     max_results: 5
-    title_column: "title"
+    title_column: "doc_label"
     id_column: "file_name"
+    # CoWork の回答の引用から元の PDF を開けるようにする
+    stage_path: "@COWORK_HANDSON_DB.ANALYTICS.DOC_STAGE"
+    relative_path_column: "file_name"
     columns_and_descriptions:
       chunk:
-        description: "文書の本文の一部"
+        description: "文書の本文の一部。先頭の【】に文書番号・文書種別・タイトルが入っている"
         type: "string"
         searchable: true
         filterable: false
+      doc_no:
+        description: "文書番号（例: NCR-2026-0912、SOP-L04-001、MAN-AR700）。回答で文書を示すときに使う"
+        type: "string"
+        searchable: false
+        filterable: true
       doc_type:
         description: "文書種別。値は 作業手順書・不具合報告書・設備マニュアル のいずれか"
         type: "string"
@@ -118,9 +128,14 @@ ALTER SNOWFLAKE INTELLIGENCE SNOWFLAKE_INTELLIGENCE_OBJECT_DEFAULT
 
 | 質問 | 確認すること |
 |---|---|
-| ライン別の月次不良率の推移をグラフで見せて | Agent が `production_analyst` を使い、折れ線グラフを表示する。L03 の 9 月以降の上昇が見える |
-| 9月に L03 の不良率が上がった原因は？ | Agent が数値を確認したあとに `document_search` を使い、NCR-2026-0912（金型温度調節機のヒーター劣化）を引用する |
-| 組立ロボットのサーボアラームの対処方法は？ | Agent が作業手順書と保守マニュアルを引用する |
+| ライン別の月次不良率の推移をグラフで見せて | Agent が `production_analyst` を使い、折れ線グラフを表示する。射出成形1号ライン（L03）の線だけが 9 月以降に上がる |
+| 9月に L03 の不良率が上がった原因は？ | Agent が数値を確認したあとに `document_search` を使う。本文に「NCR-2026-0912 不具合報告書」と書き、原因（金型温度調節機 EQ-L03-02 のヒーター劣化）と対策状況（ヒーター交換は 11 月中旬予定）を示す |
+| 組立ロボットのサーボアラームの対処方法は？ | 作業者の対応を SOP-L04-001（作業手順書）、保全課の処置を MAN-AR700（設備マニュアル）から示す。過去の事例として NCR-2026-0820（不具合報告書）も挙げ、最後に「参照した文書」の一覧を出す |
+
+> グラフにはライン ID ではなくライン名が出ることがあります。L03 は射出成形1号ライン、L04 は組立1号ラインです（一覧は `industries/manufacturing/questions.md` の先頭）。
+
+> 引用の見出しは「NCR-2026-0912（不具合報告書）樹脂カバーのショートショット多発」の形式です。
+> 見出しを選ぶと、元の PDF が CoWork の中で開きます。これは Agent の `stage_path` と `relative_path_column` の設定によるものです。
 
 > 回答の下にある **思考過程（Thinking）** を開くと、Agent がどのツールをどの順で使ったかを確認できます。
 > 期待どおりのツールが使われない場合は、Agent の `instructions.orchestration` を見直します。

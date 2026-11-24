@@ -75,17 +75,28 @@ ORDER BY a.file_name;
 CREATE OR REPLACE TABLE doc_chunks
     COMMENT = 'Cortex Search の検索対象（チャンクと属性）'
 AS
+WITH labeled AS (
+    SELECT
+        a.*,
+        REPLACE(a.file_name, '.pdf', '') AS doc_no
+    FROM doc_attributes AS a
+)
 SELECT
     c.file_name,
     c.chunk_no,
-    a.title,
-    a.doc_type,
-    a.line_id,
-    a.equipment_id,
-    -- 先頭にタイトルを付けると、チャンク単体でも何の文書か分かる
-    '【' || a.title || '】' || CHR(10) || c.chunk AS chunk
+    l.doc_no,
+    -- 引用に表示する見出し。文書番号・文書種別・タイトルを並べる（タイトルに含まれる文書番号は除く）
+    l.doc_no || '（' || l.doc_type || '）' || TRIM(REPLACE(REPLACE(l.title, l.doc_no, ''), '不具合報告書', '')) AS doc_label,
+    l.doc_type,
+    l.line_id,
+    l.equipment_id,
+    -- 先頭に見出しを付けると、チャンク単体でも何の文書か分かる
+    '【' || doc_label || '】' || CHR(10) || c.chunk AS chunk
 FROM doc_chunks_raw AS c
-JOIN doc_attributes AS a ON a.file_name = c.file_name;
+JOIN labeled AS l ON l.file_name = c.file_name;
+
+-- 見出しを確認する
+SELECT DISTINCT doc_label FROM doc_chunks ORDER BY doc_label;
 
 CREATE OR REPLACE CORTEX SEARCH SERVICE mfg_doc_search
     ON chunk
@@ -95,14 +106,14 @@ CREATE OR REPLACE CORTEX SEARCH SERVICE mfg_doc_search
     EMBEDDING_MODEL = 'snowflake-arctic-embed-l-v2.0'
     COMMENT = '作業手順書・不具合報告書・設備マニュアルの検索'
 AS
-SELECT chunk, file_name, chunk_no, title, doc_type, line_id, equipment_id
+SELECT chunk, file_name, chunk_no, doc_no, doc_label, doc_type, line_id, equipment_id
 FROM doc_chunks;
 
 -- 自然文で検索する
 SELECT PARSE_JSON(
     SNOWFLAKE.CORTEX.SEARCH_PREVIEW(
         'COWORK_HANDSON_DB.ANALYTICS.MFG_DOC_SEARCH',
-        '{"query": "ショートショットが増えた原因", "columns": ["title", "chunk"], "limit": 3}'
+        '{"query": "ショートショットが増えた原因", "columns": ["doc_label", "chunk"], "limit": 3}'
     )
 ):results AS results;
 
@@ -110,7 +121,7 @@ SELECT PARSE_JSON(
 SELECT PARSE_JSON(
     SNOWFLAKE.CORTEX.SEARCH_PREVIEW(
         'COWORK_HANDSON_DB.ANALYTICS.MFG_DOC_SEARCH',
-        '{"query": "ロボットが止まる", "columns": ["title", "doc_type", "chunk"],
+        '{"query": "ロボットが止まる", "columns": ["doc_label", "doc_type", "chunk"],
           "filter": {"@eq": {"doc_type": "不具合報告書"}}, "limit": 3}'
     )
 ):results AS results;
